@@ -125,70 +125,47 @@ const SUPABASE_URL="https://akcmpeomjyyhjkztzccn.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY="sb_publishable_j6nHG51vIyS7D24veIlZTQ_AHuPkgKZ";
 // PUBLISHED SITE URL: put your GitHub Pages URL here. This is for site identification/config only; it is not a secret.
 const UF_PUBLISHED_URL="https://yinebeb45-cpu.github.io/u-fantasy-app/";
+const UF_TELEGRAM_AUTH_URL=SUPABASE_URL+"/functions/v1/telegram-auth";
 let ufSyncPromise=null;
 const UF_SUPABASE_READY = SUPABASE_URL.startsWith("https://") && !SUPABASE_URL.includes("PASTE_") && !SUPABASE_PUBLISHABLE_KEY.includes("PASTE_");
 const ufSupabase = UF_SUPABASE_READY ? window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY) : null;
 async function syncTelegramUser(){
-  if(!ufSupabase){console.warn("Supabase user sync skipped: client is not ready.");return null;}
-  const tgUser=user();
-  const isRealTelegramUser=!!(window.Telegram&&Telegram.WebApp&&Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user&&Telegram.WebApp.initDataUnsafe.user.id);
-  if(!isRealTelegramUser){
-    console.warn("U-Fantasy: no real Telegram WebApp user detected. User sync skipped outside Telegram.");
+  if(!ufSupabase){console.warn("Supabase client is not ready.");return null;}
+  const isTelegram=!!(window.Telegram&&Telegram.WebApp&&Telegram.WebApp.initData);
+  if(!isTelegram){
+    console.warn("U-Fantasy: Telegram initData is not available. Open the app inside Telegram.");
     return null;
   }
-  const telegramId=String(tgUser.id);
   try{
-    const {data:existing,error:findError}=await ufSupabase
-      .from("users")
-      .select("id,telegram_id,username,nickname,avatar_url")
-      .eq("telegram_id",telegramId)
-      .maybeSingle();
-    if(findError)throw findError;
-
-    const payload={
-      telegram_id:telegramId,
-      username:tgUser.username||null,
-      avatar_url:tgUser.photo_url||null
-    };
-
-    // Preserve an existing nickname. Only use the Telegram first name for a brand-new account.
-    if(existing){
-      if(existing.nickname){
-        state.nickname=existing.nickname;
-      }else{
-        const starter=(tgUser.first_name||"Player").trim().slice(0,18)||"Player";
-        payload.nickname=starter;
-      }
-      const {data,error}=await ufSupabase.from("users").update(payload).eq("id",existing.id)
-        .select("id,telegram_id,username,nickname,avatar_url").single();
-      if(error)throw error;
-      state.currentUserId=data.id;
-      state.userSynced=true;
-      await ensureWalletRow(data.id);
-      if(data.nickname)localStorage.setItem("uf_nickname",data.nickname);
-      renderProfile();
-      renderHome();
-      const ws=document.getElementById("walletConnectionStatus");if(ws)ws.textContent="✅ Telegram account connected";
-      console.log("U-Fantasy existing user loaded:",data);
-      return data;
+    const response=await fetch(UF_TELEGRAM_AUTH_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({initData:Telegram.WebApp.initData})
+    });
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok||!result.ok){
+      throw new Error(result.error||("Telegram authentication failed ("+response.status+")"));
     }
-
-    payload.nickname=state.nickname||tgUser.first_name||"Player";
-    const {data,error}=await ufSupabase.from("users").insert(payload)
-      .select("id,telegram_id,username,nickname,avatar_url").single();
-    if(error)throw error;
+    const data=result.user;
+    if(!data||!data.id)throw new Error("Verified Telegram user was not returned");
     state.currentUserId=data.id;
     state.userSynced=true;
-    await ensureWalletRow(data.id);
-    if(data.nickname){state.nickname=data.nickname;localStorage.setItem("uf_nickname",data.nickname);}
+    if(data.nickname){
+      state.nickname=data.nickname;
+      localStorage.setItem("uf_nickname",data.nickname);
+    }
     renderProfile();
     renderHome();
-    const ws=document.getElementById("walletConnectionStatus");if(ws)ws.textContent="✅ Telegram account connected";
-    console.log("U-Fantasy new user created:",data);
+    const ws=document.getElementById("walletConnectionStatus");
+    if(ws)ws.textContent="✅ Telegram account securely connected";
+    console.log("U-Fantasy verified Telegram user:",data);
     return data;
   }catch(e){
-    console.error("U-Fantasy user sync failed:",e);
-    toast("Could not sync your Telegram profile");
+    state.currentUserId=null;
+    state.userSynced=false;
+    console.error("U-Fantasy secure Telegram auth failed:",e);
+    const ws=document.getElementById("walletConnectionStatus");
+    if(ws)ws.textContent="❌ Telegram account connection failed";
     return null;
   }
 }
@@ -532,7 +509,7 @@ function boot(){
     console.error("U-Fantasy boot error",e);
   }
   // Verify the backend and sync the real Telegram user into public.users.
-  ufSyncPromise=testSupabaseConnection().then(ok=>ok?syncTelegramUser():null).finally(()=>{ufSyncPromise=null});
+  ufSyncPromise=syncTelegramUser().finally(()=>{ufSyncPromise=null});
   ufSyncPromise.then(()=>loadWalletBalance()).catch(e=>console.warn("Backend startup warning:",e));
   // Always reveal the app even if an optional render or Telegram API call fails.
   document.getElementById("app").classList.add("ready");
