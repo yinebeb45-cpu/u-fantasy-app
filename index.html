@@ -389,10 +389,16 @@ async function loadWalletBalance(){
   state.walletBalance=0; state.walletLoaded=false;
   if(!ufSupabase||!state.currentUserId){renderWallet();return 0}
   try{
-    const {data,error}=await ufSupabase.from("wallets").select("balance").eq("user_id",state.currentUserId).maybeSingle();
+    let {data,error}=await ufSupabase.from("wallets").select("balance").eq("user_id",state.currentUserId).maybeSingle();
     if(error)throw error;
-    state.walletBalance=data?Number(data.balance||0):0; state.walletLoaded=true;
-  }catch(e){console.warn("Wallet balance could not be loaded. Create wallets table/RLS first.",e)}
+    if(!data){
+      const created=await ufSupabase.from("wallets").insert({user_id:state.currentUserId,balance:0}).select("balance").single();
+      if(created.error)throw created.error;
+      data=created.data;
+    }
+    state.walletBalance=Number(data?.balance||0);
+    state.walletLoaded=true;
+  }catch(e){console.warn("Wallet balance could not be loaded:",e)}
   renderWallet(); return state.walletBalance;
 }
 function renderWallet(){walletBalance.textContent="ETB "+Number(state.walletBalance||0).toFixed(2);if(state.wallet==="deposit"){walletContent.innerHTML=`<div class="card" style="padding:17px;margin-top:12px"><div class="tele"><div class="sub">${state.lang==="am"?"የክፍያ ዝርዝሮች፦":"Payment details:"}</div><div class="tele-num">Phone number ${TELEBIRR_NUMBER}</div><div class="sub">Name : ${TELEBIRR_NAME}</div><div class="sub">Wallet: Telebirr</div><button class="btn dark" style="margin-top:12px" onclick="copyNumber()">${state.lang==="am"?"ቁጥሩን ይቅዱ":"Copy phone number"}</button></div><ol class="steps"><li>${state.lang==="am"?"የስልክ ቁጥሩን ይቅዱ (copy ያርጉ)":"Copy the phone number"}</li><li>${state.lang==="am"?"በስልክ ቁጥሩ በመጠቀም በቴሌብር (telebirr) ገንዘብ ይላኩ":"Send money by Telebirr using the phone number"}</li><li>${state.lang==="am"?"ከቴሌብር የደረሰዎትን የኤስኤምኤስ (SMS) መልእክት ይለጥፉ (paste ያድርጉ)":"Paste the SMS that you have received from Telebirr"}</li><li>${state.lang==="am"?"“SUBMIT THE DEPOSITE” የሚለውን ቁልፍ ይጫኑ":"Press the button that says “SUMBIT THE DEPOSITE”"}</li></ol><div class="field"><label>${state.lang==="am"?"TELEBIRR SMS":"TELEBIRR SMS"}</label><textarea id="depositSms" placeholder="${state.lang==="am"?"የቴሌብር SMS መልእክትዎን እዚህ ይለጥፉ...":"Paste your Telebirr SMS here..."}"></textarea></div><button class="btn" style="width:100%;margin-top:12px" onclick="submitDeposit()">${state.lang==="am"?"SUBMIT THE DEPOSITE":"SUMBIT THE DEPOSITE"}</button><div class="reminder">${state.lang==="am"?"🚨 ማሳሰቢያ፡ የገንዘብ መጠኑ 100 የኢትዮጵያ ብር (100 ETB) መሆን አለበት !":"🚨 RIMINDER: the amount of money must be 100 ETB !"}</div></div>`}else{walletContent.innerHTML=`<div class="card" style="padding:17px;margin-top:12px"><div class="field"><label>${state.lang==="am"?"የሚያወጡት መጠን":"WITHDRAWAL AMOUNT"}</label><input id="withdrawAmount" type="number" placeholder="ETB amount"></div><div class="field"><label>${state.lang==="am"?"የቴሌብር ቁጥር":"TELEBIRR NUMBER"}</label><input id="withdrawNumber" placeholder="+251 9XXXXXXXX"></div><button class="btn" style="width:100%;margin-top:12px" onclick="withdraw()">${state.lang==="am"?"የመውጫ ጥያቄ ይላኩ":"Request withdrawal"}</button></div>`}}
@@ -402,7 +408,7 @@ async function submitDeposit(){
   if(!sms)return toast(state.lang==="am"?"እባክዎ SMS ይለጥፉ":"Paste the Telebirr SMS first");
   if(!ufSupabase||!state.currentUserId)return toast(state.lang==="am"?"መለያዎ አልተገናኘም":"Your account is not connected");
   try{
-    const {error}=await ufSupabase.from("deposit_requests").insert({user_id:state.currentUserId,amount:100,payment_method:"Telebirr",payment_reference:sms,status:"pending"});
+    const {error}=await ufSupabase.from("deposit_requests").insert({user_id:state.currentUserId,amount:100,method:"Telebirr",reference:sms,status:"pending"});
     if(error)throw error;
     document.getElementById("depositSms").value="";
     toast(state.lang==="am"?"የመያዣ ጥያቄዎ ተልኳል፣ አስተዳዳሪው ያረጋግጣል":"Deposit request submitted. Admin will verify it.");
@@ -416,7 +422,7 @@ async function withdraw(){
   if(!/^(?:09\d{8,9}|\+251\s?9\d{8,9})$/.test(n))return toast(state.lang==="am"?"ትክክለኛ የቴሌብር ቁጥር ያስገቡ":"Enter a valid Telebirr number");
   if(!ufSupabase||!state.currentUserId)return toast(state.lang==="am"?"መለያዎ አልተገናኘም":"Your account is not connected");
   try{
-    const {error}=await ufSupabase.from("withdrawal_requests").insert({user_id:state.currentUserId,amount:a,telebirr_number:n,status:"pending"});
+    const {error}=await ufSupabase.from("withdrawal_requests").insert({user_id:state.currentUserId,amount:a,method:"Telebirr",account:n,status:"pending"});
     if(error)throw error;
     document.getElementById("withdrawAmount").value="";document.getElementById("withdrawNumber").value="";
     toast(state.lang==="am"?"የመውጫ ጥያቄ ተልኳል፣ አስተዳዳሪው ያረጋግጣል":"Withdrawal request submitted. Admin will verify it.");
