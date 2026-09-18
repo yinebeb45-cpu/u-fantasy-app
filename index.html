@@ -104,7 +104,7 @@ html,body{background:radial-gradient(circle at 50% -10%,#4b432c 0,#242424 32%,#1
 
 <section class="page" id="h2h"><div class="eyebrow">HEAD-TO-HEAD</div><h1>U-DUEL</h1><p class="sub">Challenge another manager for the gameweek. No player-to-player chat.</p><div class="duel-hero"><div class="duel-badge">⚔️ LIVE DUELS · MAX 2 ACTIVE</div><div class="hero-title" style="margin-top:10px">Prove your squad against theirs.</div><div class="sub" style="margin-top:5px">Same gameweek. Same fantasy rules. Winner gains ranking points.</div><div class="duel-grid"><div class="duel-stat"><b id="duelActive">0/2</b><span>ACTIVE</span></div><div class="duel-stat"><b id="duelWins">0</b><span>WINS</span></div><div class="duel-stat"><b id="duelLosses">0</b><span>LOSSES</span></div></div></div><h2>Find opponent</h2><input class="search" id="duelSearch" oninput="renderH2H()" placeholder="Search username or nickname..."/><div id="opponentList"></div><h2>Challenges</h2><div id="challengeList"></div><h2>Active duels</h2><div id="activeDuels"></div><h2>History</h2><div id="duelHistory"></div></section>
 
-<section class="page" id="wallet"><div class="eyebrow" data-t="yourFunds">YOUR FUNDS</div><h1 data-t="wallet">Wallet</h1><div class="card wallet-card"><div class="sub" data-t="available">Available balance</div><div class="wallet-number" id="walletBalance">ETB 0.00</div><div class="sub" data-t="serverBalance">Server-synced balance</div></div><div class="wallet-tabs"><button class="wallet-tab active" id="depositTab" onclick="walletMode('deposit')" data-t="deposit">Deposit</button><button class="wallet-tab" id="withdrawTab" onclick="walletMode('withdraw')" data-t="withdraw">Withdraw</button></div><div id="walletContent"></div></section>
+<section class="page" id="wallet"><div class="eyebrow" data-t="yourFunds">YOUR FUNDS</div><h1 data-t="wallet">Wallet</h1><div class="notice" id="walletConnectionStatus">Checking Telegram + Supabase connection…</div><div class="card wallet-card"><div class="sub" data-t="available">Available balance</div><div class="wallet-number" id="walletBalance">ETB 0.00</div><div class="sub" data-t="serverBalance">Server-synced balance</div></div><div class="wallet-tabs"><button class="wallet-tab active" id="depositTab" onclick="walletMode('deposit')" data-t="deposit">Deposit</button><button class="wallet-tab" id="withdrawTab" onclick="walletMode('withdraw')" data-t="withdraw">Withdraw</button></div><div id="walletContent"></div></section>
 
 <section class="page" id="profile"><div class="eyebrow" data-t="account">ACCOUNT</div><h1 data-t="profile">Profile</h1><div class="card profile-hero"><div class="profile-photo" id="profileAvatar">P</div><div class="profile-name" id="profileName">Player</div><div class="handle" id="profileUsername">@player</div><div class="profile-stats"><div class="ps"><b>—</b><span data-t="rank">RANK</span></div><div class="ps"><b>0</b><span data-t="points">POINTS</span></div><div class="ps"><b id="profileEntries">0</b><span data-t="entries">ENTRIES</span></div></div></div><div class="profile-menu"><button class="profile-item" onclick="showPage('wallet')" data-t="wallet">Wallet <span>→</span></button><button class="profile-item" onclick="showPage('leaderboard')" data-t="leaderboard">Leaderboard <span>→</span></button><button class="profile-item" onclick="showPage('squad')" data-t="mySquad">My squad <span>→</span></button><button class="profile-item" onclick="invite()" data-t="invite">Invite friends <span>→</span></button></div></section>
 
@@ -123,6 +123,9 @@ const SQUAD_BUDGET=100;
 // SUPABASE SETUP: replace ONLY the two placeholder strings below with your public values.
 const SUPABASE_URL="https://akcmpeomjyyhjkztzccn.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY="sb_publishable_j6nHG51vIyS7D24veIlZTQ_AHuPkgKZ";
+// PUBLISHED SITE URL: put your GitHub Pages URL here. This is for site identification/config only; it is not a secret.
+const UF_PUBLISHED_URL="https://yinebeb45-cpu.github.io/u-fantasy-app/";
+let ufSyncPromise=null;
 const UF_SUPABASE_READY = SUPABASE_URL.startsWith("https://") && !SUPABASE_URL.includes("PASTE_") && !SUPABASE_PUBLISHABLE_KEY.includes("PASTE_");
 const ufSupabase = UF_SUPABASE_READY ? window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY) : null;
 async function syncTelegramUser(){
@@ -150,7 +153,12 @@ async function syncTelegramUser(){
 
     // Preserve an existing nickname. Only use the Telegram first name for a brand-new account.
     if(existing){
-      if(existing.nickname)state.nickname=existing.nickname;
+      if(existing.nickname){
+        state.nickname=existing.nickname;
+      }else{
+        const starter=(tgUser.first_name||"Player").trim().slice(0,18)||"Player";
+        payload.nickname=starter;
+      }
       const {data,error}=await ufSupabase.from("users").update(payload).eq("id",existing.id)
         .select("id,telegram_id,username,nickname,avatar_url").single();
       if(error)throw error;
@@ -160,6 +168,7 @@ async function syncTelegramUser(){
       if(data.nickname)localStorage.setItem("uf_nickname",data.nickname);
       renderProfile();
       renderHome();
+      const ws=document.getElementById("walletConnectionStatus");if(ws)ws.textContent="✅ Telegram account connected";
       console.log("U-Fantasy existing user loaded:",data);
       return data;
     }
@@ -174,6 +183,7 @@ async function syncTelegramUser(){
     if(data.nickname){state.nickname=data.nickname;localStorage.setItem("uf_nickname",data.nickname);}
     renderProfile();
     renderHome();
+    const ws=document.getElementById("walletConnectionStatus");if(ws)ws.textContent="✅ Telegram account connected";
     console.log("U-Fantasy new user created:",data);
     return data;
   }catch(e){
@@ -212,7 +222,7 @@ async function testSupabaseConnection(){
 }
 
 const TELEBIRR_NUMBER="+251 931313411";
-const TELEBIRR_NAME="Adonay Tigabu";
+const TELEBIRR_NAME="Adonay";
 const DEPOSIT_AMOUNT=100;
 const state={lang:"en",page:"home",contest:"epl",leaderboard:"epl",wallet:"deposit",formation:"4-3-3",squad:[],pickerPos:"GK",pickerIndex:-1,teamFilter:"All",marketPos:"ALL",nickname:localStorage.getItem("uf_nickname")||"",players:{epl:[],ucl:[]},entrants:{epl:152,ucl:0},homeCompetition:"epl",featuredCompetition:"epl",lbWeek:"current",currentUserId:null,userSynced:false,walletBalance:0,walletLoaded:false,h2h:{opponents:[{u:"@Alex",n:"Alex",rank:14},{u:"@Sam",n:"Sam",rank:27},{u:"@Mika",n:"Mika",rank:41},{u:"@Leo",n:"Leo",rank:63}],incoming:[{id:1,u:"@Jordan",n:"Jordan",gw:7}],active:[],history:[]}};
 const formations=["3-4-3","3-5-2","4-3-3","4-4-2","4-5-1","5-2-3","5-3-2","5-4-1"];
@@ -403,29 +413,59 @@ function filterTeam(t){state.teamFilter=t;renderPicker()}
 function choosePlayer(p){let idx=state.pickerIndex;if(idx<0){idx=state.squad.findIndex(x=>!x);if(idx<0){toast(state.lang==="am"?"11 ተጫዋቾች ተሞልተዋል":"Your 11 slots are full");return}}if(state.squad.some((x,j)=>x&&j!==idx&&x.id===p.id)){toast("Player already selected");return}const cost=state.squad.reduce((a,x,j)=>a+(x&&j!==idx?+x.price:0),0);if(cost+p.price>SQUAD_BUDGET){toast(state.lang==="am"?"ይህ ተጫዋች ከበጀት ይበልጣል":"This player exceeds your £100M budget");return}state.squad[idx]=p;closePicker();renderSquad()}
 function saveSquad(){if(state.squad.filter(Boolean).length<11){toast(state.lang==="am"?"11 ተጫዋቾችን ይሙሉ":"Complete your 11-player squad first");return}toast(state.lang==="am"?"ቡድኑ ተዘጋጅቷል":"Squad is ready")}
 function walletMode(x){state.wallet=x;depositTab.classList.toggle("active",x==="deposit");withdrawTab.classList.toggle("active",x==="withdraw");renderWallet()}
+async function ensureUserConnected(){
+  if(state.currentUserId&&state.userSynced)return true;
+  if(!ufSupabase)return false;
+  if(!ufSyncPromise){
+    ufSyncPromise=syncTelegramUser().finally(()=>{ufSyncPromise=null});
+  }
+  const data=await ufSyncPromise;
+  return !!(data&&state.currentUserId&&state.userSynced);
+}
+
 async function loadWalletBalance(){
   state.walletBalance=0; state.walletLoaded=false;
-  if(!ufSupabase||!state.currentUserId){renderWallet();return 0}
+  const status=document.getElementById("walletConnectionStatus");
+  if(!ufSupabase){if(status)status.textContent="❌ Supabase is not configured.";renderWallet();return 0}
+  if(!state.currentUserId){if(status)status.textContent="⏳ Connecting your Telegram account…";renderWallet();return 0}
   try{
     await ensureWalletRow(state.currentUserId);
     const {data,error}=await ufSupabase.from("wallets").select("balance").eq("user_id",state.currentUserId).maybeSingle();
     if(error)throw error;
     state.walletBalance=data?Number(data.balance||0):0;
     state.walletLoaded=true;
-  }catch(e){console.warn("Wallet balance could not be loaded. Run the wallet SQL setup and check access policies.",e)}
+    if(status)status.textContent="✅ Telegram account + Supabase wallet connected";
+  }catch(e){if(status)status.textContent="⚠️ Wallet connection needs attention. Check Supabase access policies.";console.warn("Wallet balance could not be loaded. Run the wallet SQL setup and check access policies.",e)}
   renderWallet(); return state.walletBalance;
 }
-function renderWallet(){walletBalance.textContent="ETB "+Number(state.walletBalance||0).toFixed(2);if(state.wallet==="deposit"){walletContent.innerHTML=`<div class="card" style="padding:17px;margin-top:12px"><div class="tele"><div class="sub">${state.lang==="am"?"የክፍያ ዝርዝሮች፦":"Payment details:"}</div><div class="tele-num">Phone number ${TELEBIRR_NUMBER}</div><div class="sub">Name : ${TELEBIRR_NAME}</div><div class="sub">Wallet: Telebirr</div><button class="btn dark" style="margin-top:12px" onclick="copyNumber()">${state.lang==="am"?"ቁጥሩን ይቅዱ":"Copy phone number"}</button></div><ol class="steps"><li>${state.lang==="am"?"የስልክ ቁጥሩን ይቅዱ (copy ያርጉ)":"Copy the phone number"}</li><li>${state.lang==="am"?"በስልክ ቁጥሩ በመጠቀም በቴሌብር (telebirr) ገንዘብ ይላኩ":"Send money by Telebirr using the phone number"}</li><li>${state.lang==="am"?"ከቴሌብር የደረሰዎትን የኤስኤምኤስ (SMS) መልእክት ይለጥፉ (paste ያድርጉ)":"Paste the SMS that you have received from Telebirr"}</li><li>${state.lang==="am"?"“SUBMIT THE DEPOSITE” የሚለውን ቁልፍ ይጫኑ":"Press the button that says “SUBMIT THE DEPOSIT”"}</li></ol><div class="field"><label>${state.lang==="am"?"TELEBIRR SMS":"TELEBIRR SMS"}</label><textarea id="depositSms" placeholder="${state.lang==="am"?"የቴሌብር SMS መልእክትዎን እዚህ ይለጥፉ...":"Paste your Telebirr SMS here..."}"></textarea></div><button class="btn" style="width:100%;margin-top:12px" onclick="submitDeposit()">${state.lang==="am"?"SUBMIT THE DEPOSITE":"SUBMIT THE DEPOSIT"}</button><div class="reminder">${state.lang==="am"?"🚨 ማሳሰቢያ፡ የገንዘብ መጠኑ 100 የኢትዮጵያ ብር (100 ETB) መሆን አለበት !":"🚨 REMINDER: the amount of money must be 100 ETB!"}</div></div>`}else{walletContent.innerHTML=`<div class="card" style="padding:17px;margin-top:12px"><div class="field"><label>${state.lang==="am"?"የሚያወጡት መጠን":"WITHDRAWAL AMOUNT"}</label><input id="withdrawAmount" type="number" placeholder="ETB amount"></div><div class="field"><label>${state.lang==="am"?"የቴሌብር ቁጥር":"TELEBIRR NUMBER"}</label><input id="withdrawNumber" placeholder="+251 9XXXXXXXX"></div><button class="btn" style="width:100%;margin-top:12px" onclick="withdraw()">${state.lang==="am"?"የመውጫ ጥያቄ ይላኩ":"Request withdrawal"}</button></div>`}}
+function renderWallet(){walletBalance.textContent="ETB "+Number(state.walletBalance||0).toFixed(2);if(state.wallet==="deposit"){walletContent.innerHTML=`<div class="card" style="padding:17px;margin-top:12px"><div class="tele"><div class="sub">${state.lang==="am"?"የክፍያ ዝርዝሮች፦":"Payment details:"}</div><div class="tele-num">Phone number ${TELEBIRR_NUMBER}</div><div class="sub">Name : ${TELEBIRR_NAME}</div><div class="sub">Wallet: Telebirr</div><button class="btn dark" style="margin-top:12px" onclick="copyNumber()">${state.lang==="am"?"ቁጥሩን ይቅዱ":"Copy phone number"}</button></div><ol class="steps"><li>${state.lang==="am"?"የስልክ ቁጥሩን ይቅዱ (copy ያርጉ)":"Copy the phone number"}</li><li>${state.lang==="am"?"በስልክ ቁጥሩ በመጠቀም በቴሌብር (telebirr) ገንዘብ ይላኩ":"Send money by Telebirr using the phone number"}</li><li>${state.lang==="am"?"ከቴሌብር የደረሰዎትን የኤስኤምኤስ (SMS) መልእክት ይለጥፉ (paste ያድርጉ)":"Paste the SMS that you have received from Telebirr"}</li><li>${state.lang==="am"?"“SUBMIT THE DEPOSITE” የሚለውን ቁልፍ ይጫኑ":"Press the button that says “SUBMIT THE DEPOSIT”"}</li></ol><div class="field"><label>${state.lang==="am"?"TELEBIRR SMS":"TELEBIRR SMS"}</label><textarea id="depositSms" placeholder="${state.lang==="am"?"የቴሌብር SMS መልእክትዎን እዚህ ይለጥፉ...":"Paste your Telebirr SMS here..."}"></textarea></div><button class="btn" style="width:100%;margin-top:12px" onclick="submitDeposit()">${state.lang==="am"?"SUBMIT THE DEPOSITE":"SUBMIT THE DEPOSIT"}</button><div class="reminder">${state.lang==="am"?"🚨 ማሳሰቢያ፡ የገንዘብ መጠኑ 100 የኢትዮጵያ ብር (100 ETB) መሆን አለበት !":"🚨 REMINDER: the amount of money must be 100 ETB!"}</div><div class="sub" style="margin-top:9px">${state.lang==="am"?"የክፍያ ቅድመ-ማረጋገጫ፦ SMS 100 ETB ወደ Adonay Tigabu / +251 931313411 መላኩን እና ግብይቱ መሳካቱን ይፈትሻል። ከዚያ ብቻ ለአስተዳዳሪ ይላካል።":"Payment pre-check: the SMS must show 100 ETB sent to Adonay Tigabu / +251 931313411 and a successful transfer before the request is sent to admin."}</div></div>`}else{walletContent.innerHTML=`<div class="card" style="padding:17px;margin-top:12px"><div class="field"><label>${state.lang==="am"?"የሚያወጡት መጠን":"WITHDRAWAL AMOUNT"}</label><input id="withdrawAmount" type="number" placeholder="ETB amount"></div><div class="field"><label>${state.lang==="am"?"የቴሌብር ቁጥር":"TELEBIRR NUMBER"}</label><input id="withdrawNumber" placeholder="+251 9XXXXXXXX"></div><button class="btn" style="width:100%;margin-top:12px" onclick="withdraw()">${state.lang==="am"?"የመውጫ ጥያቄ ይላኩ":"Request withdrawal"}</button></div>`}}
 function copyNumber(){navigator.clipboard?.writeText(TELEBIRR_NUMBER);toast(state.lang==="am"?"ቁጥሩ ተቅዷል":"Phone number copied")}
+function precheckTelebirrDeposit(sms){
+  const raw=String(sms||"").trim();
+  const text=raw.toLowerCase().replace(/\s+/g," ");
+  // Client-side pre-check only: it checks the SMS for the intended recipient and amount.
+  // It cannot prove a real Telebirr transfer because the app has no Telebirr transaction API.
+  const recipientOk=text.includes(TELEBIRR_NAME.toLowerCase()) || text.includes(TELEBIRR_NUMBER.replace(/\s/g,"")) || text.includes("0931313411");
+  const amountOk=/(^|\D)100(?:\.00)?(?:\s*)?(?:etb|birr|ብር)?(?:\D|$)/i.test(raw);
+  const successOk=/(successful|success|completed|sent|transferred|የተሳካ|ተልኳል|ተሳክቷል)/i.test(raw);
+  return {recipientOk,amountOk,successOk};
+}
+
 async function submitDeposit(){
   const sms=(document.getElementById("depositSms")?.value||"").trim();
   if(!sms)return toast(state.lang==="am"?"እባክዎ SMS ይለጥፉ":"Paste the Telebirr SMS first");
-  if(!ufSupabase||!state.currentUserId)return toast(state.lang==="am"?"መለያዎ አልተገናኘም":"Your account is not connected");
+  if(!ufSupabase)return toast(state.lang==="am"?"Supabase አልተገናኘም":"Supabase is not connected");
+  const check=precheckTelebirrDeposit(sms);
+  if(!check.recipientOk)return toast(state.lang==="am"?"❌ ይህ SMS የተላከው ወደ Adonay Tigabu / +251 931313411 መሆኑን ማረጋገጥ አልተቻለም":"❌ Pre-check failed: the SMS does not show a transfer to Adonay Tigabu / +251 931313411.");
+  if(!check.amountOk)return toast(state.lang==="am"?"❌ የ100 ETB ክፍያ ማረጋገጫ አልተገኘም":"❌ Pre-check failed: the SMS does not show the required 100 ETB amount.");
+  if(!check.successOk)return toast(state.lang==="am"?"❌ የተሳካ የTelebirr ግብይት መልእክት አይመስልም":"❌ Pre-check failed: the SMS does not look like a successful Telebirr transfer.");
+  const connected=await ensureUserConnected();
+  if(!connected)return toast(state.lang==="am"?"የTelegram መለያዎ አልተገናኘም":"Your Telegram account is not connected");
   try{
     const {error}=await ufSupabase.from("deposit_requests").insert({user_id:state.currentUserId,amount:DEPOSIT_AMOUNT,payment_method:"Telebirr",payment_reference:sms,status:"pending"});
     if(error)throw error;
     document.getElementById("depositSms").value="";
-    toast(state.lang==="am"?"የመያዣ ጥያቄዎ ተልኳል፣ አስተዳዳሪው ያረጋግጣል":"Deposit request submitted. Admin will verify it.");
+    toast(state.lang==="am"?"✅ የTelebirr SMS ቅድመ-ማረጋገጫ ተሳክቷል። ጥያቄው ለአስተዳዳሪ ተልኳል።":"✅ Telebirr pre-check passed. The request was sent to admin for final verification.");
   }catch(e){console.error("Deposit request failed:",e);toast(state.lang==="am"?"ጥያቄው አልተላከም":"Deposit request failed")}
 }
 async function withdraw(){
@@ -434,7 +474,9 @@ async function withdraw(){
   if(!a||a<=0)return toast(state.lang==="am"?"ትክክለኛ መጠን ያስገቡ":"Enter a valid amount");
   if(a>Number(state.walletBalance||0))return toast(state.lang==="am"?"በቂ ቀሪ ሂሳብ የለም":"Insufficient balance");
   if(!/^(?:09\d{8,9}|\+251\s?9\d{8,9})$/.test(n))return toast(state.lang==="am"?"ትክክለኛ የቴሌብር ቁጥር ያስገቡ":"Enter a valid Telebirr number");
-  if(!ufSupabase||!state.currentUserId)return toast(state.lang==="am"?"መለያዎ አልተገናኘም":"Your account is not connected");
+  if(!ufSupabase)return toast(state.lang==="am"?"Supabase አልተገናኘም":"Supabase is not connected");
+  const connected=await ensureUserConnected();
+  if(!connected)return toast(state.lang==="am"?"የTelegram መለያዎ አልተገናኘም":"Your Telegram account is not connected");
   try{
     const {error}=await ufSupabase.from("withdrawal_requests").insert({user_id:state.currentUserId,amount:a,telebirr_number:n,status:"pending"});
     if(error)throw error;
@@ -444,7 +486,29 @@ async function withdraw(){
   }catch(e){console.error("Withdrawal request failed:",e);toast(state.lang==="am"?"ጥያቄው አልተላከም":"Withdrawal request failed")}
 }
 function renderProfile(){const u=user(),base=u.first_name||"Player",n=state.nickname||base;profileName.textContent=n;profileUsername.textContent=u.username?"@"+u.username:"@player";profileAvatar.textContent=n.charAt(0).toUpperCase();profileEntries.textContent="0";const host=document.getElementById("profile");if(!document.getElementById("nicknameBox")){host.querySelector(".profile-menu").insertAdjacentHTML("beforebegin",`<div class="card" id="nicknameBox" style="padding:15px;margin-top:12px"><div class="sub">YOUR NICKNAME</div><div class="field" style="margin-top:8px"><input id="nicknameInput" maxlength="18" placeholder="Enter a nickname"></div><button class="btn" style="width:100%;margin-top:9px" onclick="saveNickname()">Save nickname</button><div class="nickname-lock" id="nicknameLock"></div></div>`)}document.getElementById("nicknameInput").value=state.nickname;const locked=new Date()>=getDeadline(state.contest);document.getElementById("nicknameInput").disabled=locked;document.getElementById("nicknameLock").textContent=locked?"🔒 Nickname is locked after the gameweek starts.":"You can change it until the gameweek starts.";document.querySelector('#nicknameBox .btn').classList.toggle("locked",locked)}
-async function saveNickname(){const locked=new Date()>=getDeadline(state.contest);if(locked)return toast("Nickname is locked for this gameweek");const n=document.getElementById("nicknameInput").value.trim();if(n.length<2)return toast("Nickname must be at least 2 characters");state.nickname=n;localStorage.setItem("uf_nickname",n);renderProfile();renderHome();toast("Nickname saved");if(ufSupabase&&state.currentUserId){try{const {error}=await ufSupabase.from("users").update({nickname:n}).eq("id",state.currentUserId);if(error)throw error;console.log("Nickname saved to Supabase.");}catch(e){console.error("Nickname database update failed:",e);toast("Saved on device, but database update failed");}}}
+async function saveNickname(){
+  const locked=new Date()>=getDeadline(state.contest);
+  if(locked)return toast("Nickname is locked for this gameweek");
+  const n=(document.getElementById("nicknameInput")?.value||"").trim();
+  if(n.length<2)return toast("Nickname must be at least 2 characters");
+  if(n.length>18)return toast("Nickname must be 18 characters or fewer");
+  if(!ufSupabase)return toast("Supabase is not connected");
+  const connected=await ensureUserConnected();
+  if(!connected)return toast("Your Telegram account is not connected");
+  try{
+    // The update is restricted to this user's own Supabase row. Do not accept a user id from the UI.
+    const {data,error}=await ufSupabase.from("users").update({nickname:n}).eq("id",state.currentUserId).select("id,nickname").single();
+    if(error)throw error;
+    state.nickname=data.nickname;
+    localStorage.setItem("uf_nickname",data.nickname);
+    renderProfile();
+    renderHome();
+    toast("Nickname saved");
+  }catch(e){
+    console.error("Nickname database update failed:",e);
+    toast("Nickname could not be saved");
+  }
+}
 
 function marketPlayers(){return state.players.epl||[]}
 function setMarketPos(x){state.marketPos=x;["ALL","GK","DEF","MID","FWD"].forEach(p=>{const el=document.getElementById("mk"+(p==="ALL"?"All":p));if(el)el.classList.toggle("active",state.marketPos===p)});renderMarket()}
@@ -468,7 +532,8 @@ function boot(){
     console.error("U-Fantasy boot error",e);
   }
   // Verify the backend and sync the real Telegram user into public.users.
-  testSupabaseConnection().then(()=>syncTelegramUser()).then(()=>loadWalletBalance()).catch(e=>console.warn("Backend startup warning:",e));
+  ufSyncPromise=testSupabaseConnection().then(ok=>ok?syncTelegramUser():null).finally(()=>{ufSyncPromise=null});
+  ufSyncPromise.then(()=>loadWalletBalance()).catch(e=>console.warn("Backend startup warning:",e));
   // Always reveal the app even if an optional render or Telegram API call fails.
   document.getElementById("app").classList.add("ready");
   const wait=Math.max(0,3200-(Date.now()-window.__ufStart));
